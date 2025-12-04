@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kirka Inventory Grid (TrebEdit)</title>
+  <!-- Tailwind won't be available by default in TrebEdit; use a small CSS fallback for basic layout -->
+  <style>
+    /* Minimal responsive grid + utilities to approximate Tailwind look */
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin:0; padding:16px; background:#f7fafc; color:#111827; }
+    .container { max-width:1100px; margin:0 auto; }
+    .grid { display:grid; gap:12px; }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+    .input, select, button { padding:8px 10px; border-radius:6px; border:1px solid #d1d5db; background:white; font-size:14px; }
+    .items { display:grid; grid-template-columns: repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+    .card { background:white; border-radius:8px; padding:8px; box-shadow:0 1px 3px rgba(0,0,0,0.06); text-align:left; }
+    .square { width:100%; padding-bottom:100%; position:relative; background:#eef2f7; border-radius:6px; overflow:hidden; }
+    .square .inner { position:absolute; inset:6px; display:flex; align-items:center; justify-content:center; font-weight:600; color:#374151; background:linear-gradient(135deg,#fff,#f3f4f6); border-radius:6px; }
+    .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; padding:20px; }
+    .modal { background:white; border-radius:8px; max-width:800px; width:100%; padding:16px; box-shadow:0 8px 30px rgba(0,0,0,0.2); }
+    .row { display:flex; gap:8px; align-items:center; }
+    .muted { color:#6b7280; font-size:13px; }
+    @media (max-width:640px){ .controls{flex-direction:column; align-items:stretch} }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 style="font-size:20px;margin-bottom:8px;">Kirka Inventory — Item Grid (TrebEdit)</h1>
+    <div id="app"></div>
+  </div>
+
+  <!-- React + ReactDOM (UMD) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Babel for JSX in browser (quick testing only) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    function KirkaInventoryGrid() {
+      const [items, setItems] = useState([]);
+      const [prices, setPrices] = useState({});
+      const [query, setQuery] = useState("");
+      const [typeFilter, setTypeFilter] = useState("all");
+      const [rarityFilter, setRarityFilter] = useState("all");
+      const [sortBy, setSortBy] = useState("name");
+      const [selected, setSelected] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        let mounted = true;
+        async function fetchData() {
+          setLoading(true);
+          try {
+            const [itemsRes, pricesRes] = await Promise.all([
+              fetch("https://kirka.lukeskywalk.com/finalUpdatedBaseList.json"),
+              fetch("https://kirka.lukeskywalk.com/priceList.json")
+            ]);
+            const itemsJson = await itemsRes.json();
+            const pricesJson = await pricesRes.json();
+            let normalized = [];
+            if (Array.isArray(itemsJson)) normalized = itemsJson;
+            else if (typeof itemsJson === "object") {
+              normalized = Object.entries(itemsJson).map(([id, data]) => ({ id, ...data }));
+            }
+            if (!mounted) return;
+            setItems(normalized);
+            setPrices(pricesJson || {});
+          } catch (e) {
+            console.error("Fetch error:", e);
+            // show nothing
+          } finally {
+            if (mounted) setLoading(false);
+          }
+        }
+        fetchData();
+        return () => { mounted = false; };
+      }, []);
+
+      const types = useMemo(() => {
+        const s = new Set();
+        items.forEach(it => it.type && s.add(it.type));
+        return [...s].sort();
+      }, [items]);
+
+      const rarities = useMemo(() => {
+        const s = new Set();
+        items.forEach(it => it.rarity && s.add(it.rarity));
+        return [...s].sort();
+      }, [items]);
+
+      const visibleItems = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        let list = items.filter(it => {
+          if (typeFilter !== "all" && it.type !== typeFilter) return false;
+          if (rarityFilter !== "all" && it.rarity !== rarityFilter) return false;
+          if (!q) return true;
+          return (it.name && it.name.toLowerCase().includes(q)) || (it.description && it.description.toLowerCase().includes(q)) || (it.id && String(it.id).includes(q));
+        }).map(it => ({ ...it, _price: prices[it.id] ?? prices[it.name] ?? null }));
+
+        if (sortBy === "name") list.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+        if (sortBy === "price") list.sort((a,b)=> (b._price||0) - (a._price||0));
+        if (sortBy === "rarity") list.sort((a,b)=> (a.rarity||"").localeCompare(b.rarity||""));
+        return list;
+      }, [items, query, typeFilter, rarityFilter, sortBy, prices]);
+
+      function ItemIcon({item}) {
+        if (item.textureUrl) return <img src={item.textureUrl} alt={item.name} style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:6}}/>;
+        const initials = (item.name||"?").split(" ").slice(0,2).map(s=>s[0]).join("");
+        return <div className="inner">{initials}</div>;
+      }
+
+      return (
+        <div>
+          <div className="controls">
+            <input className="input" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name, id, description..." style={{flex:1}}/>
+            <select className="input" value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}>
+              <option value="all">All types</option>
+              {types.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select className="input" value={rarityFilter} onChange={e=>setRarityFilter(e.target.value)}>
+              <option value="all">All rarities</option>
+              {rarities.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <select className="input" value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+              <option value="name">Name</option>
+              <option value="price">Price</option>
+              <option value="rarity">Rarity</option>
+            </select>
+          </div>
+
+          <div style={{marginBottom:8}} className="row muted">
+            {loading ? "Loading items..." : `${visibleItems.length} items`}
+          </div>
+
+          <div className="items" role="list">
+            {visibleItems.map(it => (
+              <button key={it.id || it.name} onClick={()=>setSelected(it)} className="card" style={{textAlign:'left'}}>
+                <div className="square"><div className="inner"><ItemIcon item={it}/></div></div>
+                <div style={{marginTop:8,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{it.name}</div>
+                <div className="muted" style={{fontSize:12}}>{it.type || 'Unknown'}</div>
+                <div style={{marginTop:6,fontSize:13}}>Price: <strong>{it._price != null ? it._price : '—'}</strong></div>
+              </button>
+            ))}
+          </div>
+
+          {selected && (
+            <div className="modal-bg" onClick={()=>setSelected(null)}>
+              <div className="modal" onClick={e=>e.stopPropagation()}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'start',gap:8}}>
+                  <div>
+                    <h2 style={{margin:0}}>{selected.name}</h2>
+                    <div className="muted">Type: {selected.type || '—'} · Rarity: {selected.rarity || '—'}</div>
+                  </div>
+                  <div style={{display:'flex',gap:8}}>
+                    <button className="input" onClick={()=>window.open(`https://kirka.lukeskywalk.com/items.html?search=${encodeURIComponent(selected.name)}`)}>Open on KirkaTrades</button>
+                    <button className="input" onClick={()=>setSelected(null)}>Close</button>
+                  </div>
+                </div>
+
+                <div style={{marginTop:12, display:'grid', gridTemplateColumns:'1fr 2fr', gap:12}}>
+                  <div>
+                    <div style={{width:'100%',height:160,borderRadius:8,overflow:'hidden',background:'#f3f4f6'}}>
+                      <ItemIcon item={selected}/>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="muted">{selected.description || 'No description available.'}</p>
+                    <div style={{marginTop:8}}>Item ID: <code style={{background:'#f3f4f6',padding:'2px 6px',borderRadius:6}}>{selected.id}</code></div>
+                    <div style={{marginTop:8}}>Price: <strong>{selected._price != null ? selected._price : '—'}</strong></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('app'));
+    root.render(<KirkaInventoryGrid />);
+  </script>
+</body>
+</html>
