@@ -53,12 +53,13 @@
         async function fetchData() {
           setLoading(true);
           try {
-            const proxy = (file) => `https://cors.bridged.cc/https://kirka.lukeskywalk.com/${file}`;
+            const proxy = (file) => `/api/proxy?file=${file}`;
 
             const itemsRes = await fetch(proxy("finalUpdatedBaseList.json"));
             const pricesRes = await fetch(proxy("priceList.json"));
-            const itemsJson = await itemsRes.json();
-            const pricesJson = await pricesRes.json();
+
+            const items = await itemsRes.json();
+            const prices = await pricesRes.json();
             let normalized = [];
             if (Array.isArray(itemsJson)) normalized = itemsJson;
             else if (typeof itemsJson === "object") {
