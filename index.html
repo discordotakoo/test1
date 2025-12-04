@@ -53,13 +53,13 @@
         async function fetchData() {
           setLoading(true);
           try {
-            const proxy = (file) => `/api/proxy?file=${file}`;
+            const [itemsRes, pricesRes] = await Promise.all([
+  fetch("finalUpdatedBaseList.json"),
+  fetch("priceList.json")
+]);
 
-            const itemsRes = await fetch(proxy("finalUpdatedBaseList.json"));
-            const pricesRes = await fetch(proxy("priceList.json"));
-
-            const items = await itemsRes.json();
-            const prices = await pricesRes.json();
+const items = await itemsRes.json();
+const prices = await pricesRes.json();
             let normalized = [];
             if (Array.isArray(itemsJson)) normalized = itemsJson;
             else if (typeof itemsJson === "object") {
