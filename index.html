@@ -53,10 +53,10 @@
         async function fetchData() {
           setLoading(true);
           try {
-            const [itemsRes, pricesRes] = await Promise.all([
-              fetch("https://kirka.lukeskywalk.com/finalUpdatedBaseList.json"),
-              fetch("https://kirka.lukeskywalk.com/priceList.json")
-            ]);
+            const proxy = (file) => `https://cors.bridged.cc/https://kirka.lukeskywalk.com/${file}`;
+
+            const itemsRes = await fetch(proxy("finalUpdatedBaseList.json"));
+            const pricesRes = await fetch(proxy("priceList.json"));
             const itemsJson = await itemsRes.json();
             const pricesJson = await pricesRes.json();
             let normalized = [];
